@@ -19,16 +19,15 @@ Academic Deep Reinforcement Learning project that builds a DQN agent to allocate
 | File | What it does |
 |------|-------------|
 | `agent.py` (445 lines) | TradingEnv, QNetwork, Agent (Double DQN), train_fold(), _run_episode(), persistence |
-| `GUIA_EQUIPO.md` | Design document: state/action/reward/algorithm decisions with financial justification |
-| `IMPLEMENTACION.md` | Plain-language technical explanation in Spanish, 10 sections including troubleshooting |
+| `docs/IMPLEMENTACION.md` | Plain-language technical explanation in Spanish, 10 sections including troubleshooting |
 
 ## Current status
 
-**V1 (2026-06-07):** sortino=−5.49, cum_ret=−0.9999, max_dd=−0.9999 (fold 5 only). Diagnosed in `ENTRENAMIENTO_V1.md`. Root cause: drawdown penalty created a structural trap where switching to cash cost more than staying in a losing position.
+**V1 (2026-06-07):** sortino=−5.49, cum_ret=−0.9999, max_dd=−0.9999 (fold 5 only). Diagnosed in `docs/ENTRENAMIENTO_V1.md`. Root cause: drawdown penalty created a structural trap where switching to cash cost more than staying in a losing position.
 
-**V2 (2026-06-07):** sortino=−3.67, cum_ret=−1.0, max_dd=−1.0 (fold 5 only). Diagnosed in `ENTRENAMIENTO_V2.md`. Fixes applied improved Sortino but structural trap persisted: `MU × drawdown` is identical for all actions, so it cannot distinguish between staying and escaping a losing position.
+**V2 (2026-06-07):** sortino=−3.67, cum_ret=−1.0, max_dd=−1.0 (fold 5 only). Diagnosed in `docs/ENTRENAMIENTO_V2.md`. Fixes applied improved Sortino but structural trap persisted: `MU × drawdown` is identical for all actions, so it cannot distinguish between staying and escaping a losing position.
 
-**V3 (2026-06-07):** Full 5-fold run with differential Sortino reward (Fix 5). Diagnosed in `ENTRENAMIENTO_V3.md`.
+**V3 (2026-06-07):** Full 5-fold run with differential Sortino reward (Fix 5). Diagnosed in `docs/ENTRENAMIENTO_V3.md`.
 
 | Fold | train_end | eval_end | sortino | cum_ret | max_dd |
 |------|-----------|----------|---------|---------|--------|
@@ -51,11 +50,11 @@ Root cause (V3): distribution shift between training and evaluation regimes. Fol
 
 **Data interval currently in use:** `load_prices("1h")` (`agent.py:346`) → `data/raw/prices_1h.parquet`. Available intervals: 15m, 30m, 1h.
 
-**Periodicity analysis conclusion (from `ENTRENAMIENTO_V3.md` Section 8):** Do NOT change the interval for V4. With 600k training steps, finer intervals (30m, 15m) still reduce episodes per fold (17 and 8.5 respectively for fold 1 vs ~34 with 1h), and the 1h interval provides a better signal/noise ratio for the rolling features (vol_21, mom_20 = ~21 and ~20 hours). The failure of folds 2-5 is caused by market regime mismatch, not data granularity.
+**Periodicity analysis conclusion (from `docs/ENTRENAMIENTO_V3.md` Section 8):** Do NOT change the interval for V4. With 600k training steps, finer intervals (30m, 15m) still reduce episodes per fold (17 and 8.5 respectively for fold 1 vs ~34 with 1h), and the 1h interval provides a better signal/noise ratio for the rolling features (vol_21, mom_20 = ~21 and ~20 hours). The failure of folds 2-5 is caused by market regime mismatch, not data granularity.
 
 **Pending for V4 training:**
 1. Run `uv run pytest tests/test_submission.py -v` — all 26 must pass.
-2. Delete V3 checkpoints, run full 5-fold training, document in `ENTRENAMIENTO_V4.md`.
+2. Delete V3 checkpoints, run full 5-fold training, document in `docs/ENTRENAMIENTO_V4.md`.
 3. Success criterion: sortino > 0 in ≥ 3 folds. If only fold 1 positive again, add regime-detection features to the 22-dim observation vector.
 
 ## Rules for every session
