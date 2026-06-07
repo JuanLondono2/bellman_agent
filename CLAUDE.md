@@ -38,21 +38,25 @@ Academic Deep Reinforcement Learning project that builds a DQN agent to allocate
 | 4 | 2022-12-31 | 2023-12-31 | −4.9175 | −0.9998 | −0.9998 |
 | 5 | 2023-12-31 | 2025-12-31 | −3.8967 | −1.0000 | −1.0000 |
 
+**Feature engineering limit (2026-06-07):** Con 200k pasos fijos, no existe combinación de features que compense la insuficiencia de episodios en folds 2-5 ni el distribution shift; el feature engineering es la herramienta correcta solo después de resolver el presupuesto de pasos.
+
 Root cause (V3): distribution shift between training and evaluation regimes. Fold 1 succeeded because eval period (2020) was a strongly trending bull market aligned with the training regime. Folds 2-5 failed due to: (a) market regime mismatch in eval, and (b) insufficient training episodes per fold — larger training sets (26k–52k rows) complete only 3.8–7.6 full episodes in 200k steps vs 11.5 episodes for fold 1. Differential Sortino is the correct reward but did not solve these two root causes.
 
 **Fixes applied to `agent.py` for V3:**
 - Fix 5 (`agent.py:107–122`): `_reward()` replaced with differential Sortino — `downside = max(0, −log_ret)` (per-step, action-dependent) instead of `(peak − value) / peak` (cumulative, action-independent). Breaks the structural trap proved in V2 analysis.
 
+**Fixes applied to `agent.py` for V4:**
+- Fix 6 (`agent.py:159`): `TRAIN_STEPS = 600_000` (was 200_000) — fold 5 now completes ~11 episodes instead of ~3.8, matching fold 1's convergence budget in V3.
+- Fix 7 (`agent.py:157`): `BUFFER_SIZE = 50_000` (was 100_000) — prevents a single large-fold episode from dominating 52% of the replay buffer, improving temporal diversity of sampled transitions.
+
 **Data interval currently in use:** `load_prices("1h")` (`agent.py:346`) → `data/raw/prices_1h.parquet`. Available intervals: 15m, 30m, 1h.
 
-**Periodicity analysis conclusion (from `ENTRENAMIENTO_V3.md` Section 8):** Do NOT change the interval for V4. With fixed 200k training steps, finer intervals (30m, 15m) reduce episodes per fold further (5.7 and 2.9 respectively for fold 1), worsening Q-value convergence. The 1h interval provides a good signal/noise ratio for the rolling features (vol_21, mom_20 = ~21 and ~20 hours). The failure of folds 2-5 is caused by market regime mismatch, not data granularity.
+**Periodicity analysis conclusion (from `ENTRENAMIENTO_V3.md` Section 8):** Do NOT change the interval for V4. With 600k training steps, finer intervals (30m, 15m) still reduce episodes per fold (17 and 8.5 respectively for fold 1 vs ~34 with 1h), and the 1h interval provides a better signal/noise ratio for the rolling features (vol_21, mom_20 = ~21 and ~20 hours). The failure of folds 2-5 is caused by market regime mismatch, not data granularity.
 
 **Pending for V4 training:**
-1. Apply Fix 6 to `agent.py:159`: `TRAIN_STEPS = 600_000` — ensures fold 5 completes ~11 episodes (same as fold 1 in V3).
-2. Apply Fix 7 to `agent.py:157`: `BUFFER_SIZE = 50_000` — prevents single episode dominating buffer in large folds.
-3. Run `uv run pytest tests/test_submission.py -v` — all 26 must pass.
-4. Delete V3 checkpoints, run full 5-fold training, document in `ENTRENAMIENTO_V4.md`.
-5. Success criterion: sortino > 0 in ≥ 3 folds. If only fold 1 positive again, add regime-detection features to the 22-dim observation vector.
+1. Run `uv run pytest tests/test_submission.py -v` — all 26 must pass.
+2. Delete V3 checkpoints, run full 5-fold training, document in `ENTRENAMIENTO_V4.md`.
+3. Success criterion: sortino > 0 in ≥ 3 folds. If only fold 1 positive again, add regime-detection features to the 22-dim observation vector.
 
 ## Rules for every session
 

@@ -328,5 +328,15 @@ Razones:
 
 ---
 
+---
+
+### 8.6 Conclusión: límites del feature engineering dado el presupuesto de pasos
+
+Problema primario — Distribution shift: El agente se entrena en 2017-2019/2020 (mayoritariamente alcista para criptomonedas) y evalúa en 2021-2025 (incluye el bear market de 2022, mercados mixtos, y períodos de alta correlación entre activos que no estaban en el entrenamiento). Ninguna feature computada a posteriori sobre los datos de entrenamiento puede darle al agente experiencia que no tuvo. Si la red Q nunca vio un bear market sostenido de 12 meses durante el entrenamiento, no puede generalizar correctamente a uno, independientemente de cuántas features descriptivas tenga.
+
+Conclusión directa: Con 200k pasos fijos y la arquitectura actual, no existe combinación de features que compense la insuficiencia de episodios en folds 2-5 ni la distribución shift entre regímenes. El feature engineering es la herramienta correcta después de resolver el presupuesto de pasos. En el orden inverso, es maquillaje sobre el problema real.
+
+---
+
 *Versión: V3. Autor: equipo. Fecha: 2026-06-07.*
 *Código base analizado: `agent.py` (líneas 29–50, 98–123, 157–159, 267–311, 346), `src/data.py` (líneas 15–103), `configs/default.yaml`.*
