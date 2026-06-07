@@ -46,8 +46,8 @@ N_ACTIONS = len(_WEIGHT_MENU)
 class TradingEnv(BaseTradingEnv):
 
     # Reward penalty coefficients (GUIA_EQUIPO.md Section 4, R3).
-    LAMBDA = 0.1   # turnover penalty: discourages excessive rebalancing
-    MU     = 0.5   # drawdown penalty: discourages large peak-to-trough losses
+    LAMBDA = 0.01  # turnover penalty: discourages excessive rebalancing
+    MU     = 0.05  # drawdown penalty: discourages large peak-to-trough losses
 
     def __init__(self, prices, features, scaler,
                  transaction_cost_bps=10.0, initial_cash=10_000.0):
@@ -108,7 +108,7 @@ class TradingEnv(BaseTradingEnv):
         # Track running peak for drawdown calculation.
         self._peak_value = max(self._peak_value, curr_value)
 
-        log_ret  = float(np.log(curr_value / (prev_value + 1e-8) + 1e-8))
+        log_ret  = float(np.log(max(curr_value, 1e-8) / (prev_value + 1e-8) + 1e-8))
         turnover = self._last_turnover
         drawdown = max(0.0, (self._peak_value - curr_value) / (self._peak_value + 1e-8))
 
@@ -263,10 +263,12 @@ class Agent(BaseAgent):
 
         # ── Training loop ──────────────────────────────────────────────────
         obs, _ = env.reset()
+        action_counts = [0] * self.n_actions
 
         for global_step in range(self._step + 1, n_steps + 1):
             eps    = self.epsilon
             action = self.act(obs, epsilon=eps)
+            action_counts[action] += 1
             next_obs, reward, terminated, truncated, _ = env.step(action)
             done = terminated or truncated
 
@@ -300,8 +302,12 @@ class Agent(BaseAgent):
                 torch.save(ckpt, f"{ckpt_dir}/fold_{fold_id}_latest.pt")
 
             if global_step % 20_000 == 0 or global_step == n_steps:
+                top_action = max(range(self.n_actions), key=lambda a: action_counts[a])
+                top_pct    = 100 * action_counts[top_action] / max(sum(action_counts), 1)
                 print(f"    step {global_step:>7}/{n_steps}  "
-                      f"eps={eps:.3f}  buf={len(self.buffer)}")
+                      f"eps={eps:.3f}  buf={len(self.buffer)}"
+                      f"  top_action={top_action} ({top_pct:.0f}%)")
+                action_counts = [0] * self.n_actions
 
 
 # ── Walk-forward training ─────────────────────────────────────────────────────
