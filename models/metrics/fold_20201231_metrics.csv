@@ -1,0 +1,2 @@
+step,episode_reward,sortino,cum_ret,max_dd,epsilon,timestamp
+200000,-111.322094,-1.52859,-0.997767,-0.998537,0.05,2026-06-07T17:45:12.165669

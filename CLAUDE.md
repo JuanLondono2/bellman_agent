@@ -24,32 +24,35 @@ Academic Deep Reinforcement Learning project that builds a DQN agent to allocate
 
 ## Current status
 
-**V1 (2026-06-07):** sortino=−5.49, cum_ret=−0.9999, max_dd=−0.9999 (fold 5). Diagnosed in `ENTRENAMIENTO_V1.md`. Root cause: drawdown penalty created a structural trap where switching to cash cost more than staying in a losing position.
+**V1 (2026-06-07):** sortino=−5.49, cum_ret=−0.9999, max_dd=−0.9999 (fold 5 only). Diagnosed in `ENTRENAMIENTO_V1.md`. Root cause: drawdown penalty created a structural trap where switching to cash cost more than staying in a losing position.
 
-**V2 (2026-06-07):** sortino=−3.67, cum_ret=−1.0, max_dd=−1.0, ann_ret=−0.2206, ann_vol=0.0814 (fold 5). Diagnosed in `ENTRENAMIENTO_V2.md`. Fixes applied improved Sortino but structural trap persisted: `MU × drawdown` is identical for all actions, so it cannot distinguish between staying and escaping a losing position.
+**V2 (2026-06-07):** sortino=−3.67, cum_ret=−1.0, max_dd=−1.0 (fold 5 only). Diagnosed in `ENTRENAMIENTO_V2.md`. Fixes applied improved Sortino but structural trap persisted: `MU × drawdown` is identical for all actions, so it cannot distinguish between staying and escaping a losing position.
 
-**Fixes applied to `agent.py` for V2 — all 26 tests pass:**
-- Fix 1 (`agent.py:111`): `log_ret` now uses `max(curr_value, 1e-8)` — prevents NaN when portfolio value goes negative
-- Fix 2 (`agent.py:50`): `MU` reduced `0.5 → 0.05` — reduces drawdown death spiral magnitude
-- Fix 3 (`agent.py:266–310`): `action_counts` counter added — every 20 000-step print now shows `top_action=N (X%)` and resets
-- Fix 4 (`agent.py:49`): `LAMBDA` reduced `0.1 → 0.01` — allows the agent to leave the all-cash position
+**V3 (2026-06-07):** Full 5-fold run with differential Sortino reward (Fix 5). Diagnosed in `ENTRENAMIENTO_V3.md`.
 
-**Fix selected for V3 — NOT yet applied to `agent.py`:**
-- Fix 5 (`agent.py:107–122`): replace `_reward()` with differential Sortino — swap `MU × drawdown` (cumulative, action-independent) for `MU × max(0, −log_ret)` (per-step, action-dependent). LAMBDA and MU coefficients unchanged (0.01 and 0.05). This breaks the structural trap: escaping a losing position immediately zeroes the downside penalty, making the discounted benefit of switching to cash (0.0276) exceed the switching cost (0.020).
+| Fold | train_end | eval_end | sortino | cum_ret | max_dd |
+|------|-----------|----------|---------|---------|--------|
+| 1 | 2019-12-31 | 2020-12-31 | **+1.8580** | **+127.8567** | **−0.2333** |
+| 2 | 2020-12-31 | 2021-12-31 | −1.5286 | −0.9978 | −0.9985 |
+| 3 | 2021-12-31 | 2022-12-31 | −3.5462 | −1.0000 | −1.0000 |
+| 4 | 2022-12-31 | 2023-12-31 | −4.9175 | −0.9998 | −0.9998 |
+| 5 | 2023-12-31 | 2025-12-31 | −3.8967 | −1.0000 | −1.0000 |
 
-**Pending before V3 training:**
-1. Apply Fix 5 to `agent.py:107–122` — replace `_reward()`.
-2. Run `uv run pytest tests/test_submission.py -v` — all 26 must pass.
-3. Delete V2 checkpoints to force a clean run:
-   ```powershell
-   Remove-Item models\checkpoints\* -Force
-   Remove-Item models\metrics\* -Force
-   ```
-4. Run the full 5-fold training:
-   ```bash
-   uv run python agent.py
-   ```
-5. Document results in `ENTRENAMIENTO_V3.md` (same structure as V1 and V2).
+Root cause (V3): distribution shift between training and evaluation regimes. Fold 1 succeeded because eval period (2020) was a strongly trending bull market aligned with the training regime. Folds 2-5 failed due to: (a) market regime mismatch in eval, and (b) insufficient training episodes per fold — larger training sets (26k–52k rows) complete only 3.8–7.6 full episodes in 200k steps vs 11.5 episodes for fold 1. Differential Sortino is the correct reward but did not solve these two root causes.
+
+**Fixes applied to `agent.py` for V3:**
+- Fix 5 (`agent.py:107–122`): `_reward()` replaced with differential Sortino — `downside = max(0, −log_ret)` (per-step, action-dependent) instead of `(peak − value) / peak` (cumulative, action-independent). Breaks the structural trap proved in V2 analysis.
+
+**Data interval currently in use:** `load_prices("1h")` (`agent.py:346`) → `data/raw/prices_1h.parquet`. Available intervals: 15m, 30m, 1h.
+
+**Periodicity analysis conclusion (from `ENTRENAMIENTO_V3.md` Section 8):** Do NOT change the interval for V4. With fixed 200k training steps, finer intervals (30m, 15m) reduce episodes per fold further (5.7 and 2.9 respectively for fold 1), worsening Q-value convergence. The 1h interval provides a good signal/noise ratio for the rolling features (vol_21, mom_20 = ~21 and ~20 hours). The failure of folds 2-5 is caused by market regime mismatch, not data granularity.
+
+**Pending for V4 training:**
+1. Apply Fix 6 to `agent.py:159`: `TRAIN_STEPS = 600_000` — ensures fold 5 completes ~11 episodes (same as fold 1 in V3).
+2. Apply Fix 7 to `agent.py:157`: `BUFFER_SIZE = 50_000` — prevents single episode dominating buffer in large folds.
+3. Run `uv run pytest tests/test_submission.py -v` — all 26 must pass.
+4. Delete V3 checkpoints, run full 5-fold training, document in `ENTRENAMIENTO_V4.md`.
+5. Success criterion: sortino > 0 in ≥ 3 folds. If only fold 1 positive again, add regime-detection features to the 22-dim observation vector.
 
 ## Rules for every session
 

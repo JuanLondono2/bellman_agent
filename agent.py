@@ -105,12 +105,12 @@ class TradingEnv(BaseTradingEnv):
         return w
 
     def _reward(self, prev_value: float, curr_value: float) -> float:
-        # Track running peak for drawdown calculation.
+        # Track running peak (used by sanity printout at line 438).
         self._peak_value = max(self._peak_value, curr_value)
 
         log_ret  = float(np.log(max(curr_value, 1e-8) / (prev_value + 1e-8) + 1e-8))
         turnover = self._last_turnover
-        drawdown = max(0.0, (self._peak_value - curr_value) / (self._peak_value + 1e-8))
+        downside = max(0.0, -log_ret)  # differential Sortino: per-step, action-dependent
 
         # R1: pure log-return — agent discovers churn exploit (trades every step)
         # return log_ret
@@ -118,8 +118,9 @@ class TradingEnv(BaseTradingEnv):
         # R2: log-return minus turnover penalty — agent may park permanently in cash
         # return log_ret - self.LAMBDA * turnover
 
-        # R3: full reward — active formulation
-        return log_ret - self.LAMBDA * turnover - self.MU * drawdown
+        # R3: differential Sortino — downside is per-step so escaping a loss
+        # immediately zeroes the penalty (breaks the V2 structural trap).
+        return log_ret - self.LAMBDA * turnover - self.MU * downside
 
 
 # ── Q-Network ─────────────────────────────────────────────────────────────────
