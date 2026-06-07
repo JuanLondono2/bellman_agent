@@ -11,3 +11,6 @@ dist/
 scripts/
 .claude/
 tests/
+prompt*.txt
+tareas_claude.txt
+.pytest_cache/
