@@ -1,172 +1,135 @@
-# BELLMAN CAPITAL — Autonomous Portfolio Allocation
+# Bellman Capital — Agente DQN de Asignación de Portafolio
 
-## Teams
+Proyecto académico de Deep Reinforcement Learning. Se construyó un agente DQN que asigna capital entre tres activos de riesgo y cash usando datos OHLCV horarios de criptomonedas, evaluado con validación walk-forward en 5 folds temporales.
 
-Work in groups of up to 4. One submission per team. Every team member is expected to understand and be able to defend the full implementation.
+## Equipo
 
-## Overview
+| Nombre | Rol |
+|--------|-----|
+| Alejandro Rubiano | Investigador |
+| Juan Camilo San Miguel | Investigador |
+| Juan Sebastian Londoño | Investigador |
 
-Markets move $5 trillion a day. Every price is an argument between a buyer and a seller, and one of them is wrong. This workshop asks you to build a reinforcement learning agent that systematically decides how to allocate capital across a portfolio of assets, evaluated on real historical market data.
+**Fecha de inicio:** 2026-05-30
 
-## Market Primer
+---
 
-A **return** is the percentage change in price between two timesteps. A **portfolio** is an allocation of capital across assets: holding 50% in Asset A and 50% in cash with a 20% rise in Asset A yields a 10% portfolio return.
+## Tesis del agente
 
-**Transaction costs** are fees paid on every rebalance. At 10 basis points per trade, an agent that trades excessively destroys its own returns. **Drawdown** is the peak-to-trough loss before recovery; a 50% drawdown requires a 100% gain just to break even.
+Los mercados de criptomonedas a escala horaria exhiben suficiente estructura de momentum y clustering de volatilidad para que una política aprendida con DQN pueda asignar capital de forma rentable con ajuste por riesgo. La métrica objetivo es el **ratio de Sortino**, que penaliza solo la volatilidad negativa.
 
-## Project Objectives
+---
 
-Build an agent that allocates capital across four assets (three risky, one cash) to maximize risk-adjusted return. The agent trains on historical data and is evaluated on a held-out period it cannot observe during development.
-
-**Non-negotiable constraints:**
-1. No lookahead. Features at time `t` may only use data from `t` and earlier.
-2. Transaction costs of at least 10 basis points per trade must be modeled.
-3. Results must be fully reproducible from the submitted codebase.
-
-Grading rewards rigorous methodology, not high returns. An agent that fails on the held-out period but demonstrates disciplined evaluation can earn full marks.
-
-## 0. Team
-
-- **Agent codename:**
-- **Researchers:**
-- **Inception date:**
-- **Thesis:** What does your agent believe about these markets, and how does that belief shape its design?
-
-## 1. Problem Formulation
-
-### State Space
-
-The agent's observation at each timestep is its state. Define it carefully: what information is available at time `t`, and what form does it take?
-
-For every feature in your state, justify its inclusion in one sentence. Then answer:
-1. What is in your observation at time `t`? List every component.
-2. Raw prices are not Markov: past volatility and momentum matter. How does your observation account for this?
-3. How much history do you include, and why?
-
-### Action Space
-
-The action is the allocation decision the agent makes at each step.
-
-**Short positions are allowed.** Risky asset weights can be negative (e.g. -0.5 means you are short 50% of that asset: you profit if it falls, lose if it rises). Cash weight must remain non-negative. All weights must sum to 1, and each risky asset weight is capped at [-1.0, 1.0] by the framework — no leverage. Note that this model does not charge a funding rate on short positions, which is a simplification of how shorting works in practice.
-
-| Design | Tradeoff |
-|---|---|
-| Discrete menu of named allocations | Pre-define ~10–15 fixed portfolios; agent selects one per step. Compatible with DQN. Interpretable. Limited to predefined combinations. Can include short positions in the menu. |
-| Continuous portfolio weights | Agent outputs weights directly. More expressive, but incompatible with DQN; requires policy gradient methods (PPO, SAC), which are significantly harder to tune. |
-| Adjustment actions | Agent shifts current weights incrementally. Natural for gradual rebalancing; state must include current holdings. |
-
-Answer:
-1. What is your action space? If discrete, list every action and its economic interpretation.
-2. Why did you choose this representation?
-3. What does this choice prevent your agent from doing?
-
-## 2. Data and Exploratory Analysis
+## Estructura del repositorio
 
 ```
-data/raw/prices_{interval}.parquet    # OHLCV + taker buy ratio, columns: asset_0_*, asset_1_*, asset_2_*, cash
+bellmancapital/
+├── agent.py               # Agente DQN completo (única entrega)
+├── INFORME_FINAL.md       # Informe técnico de entrega
+├── docs/
+│   ├── ENTRENAMIENTO_V1.md
+│   ├── ENTRENAMIENTO_V2.md
+│   ├── ENTRENAMIENTO_V3.md
+│   └── IMPLEMENTACION.md
+├── src/                   # Infraestructura de solo lectura
+│   ├── base.py
+│   ├── baselines.py
+│   ├── data.py
+│   ├── env.py
+│   └── metrics.py
+├── data/raw/              # Precios OHLCV (15m, 30m, 1h)
+├── models/                # Checkpoints y métricas de entrenamiento
+├── configs/default.yaml   # Splits temporales y parámetros del entorno
+└── tests/                 # 26 tests de validación de la entrega
 ```
 
-Data is provided in three candle intervals: `15m`, `30m`, `1h`. Asset names are anonymized; identities are revealed at the final evaluation. `src/data.py` provides `load_prices(interval)`, `split()`, and `build_features()`. Temporal splits are fixed in `configs/default.yaml` and must not be altered.
+---
 
-**Before writing any code, run the EDA notebook:**
+## Diseño del agente
+
+### Estado (22 dimensiones)
+
+18 features de mercado (6 por activo: `log_ret`, `vol_21`, `mom_20`, `atr_14`, `vol_ratio`, `taker_buy_ratio`) más 4 pesos actuales del portafolio. Normalizadas con `StandardScaler` ajustado **solo sobre datos de entrenamiento** para evitar lookahead.
+
+### Acciones (10 portafolios discretos)
+
+| ID | Nombre | Pesos `[a0, a1, a2, cash]` |
+|----|--------|---------------------------|
+| 0 | All Cash | `[0.00, 0.00, 0.00, 1.00]` |
+| 1 | Long A0 | `[1.00, 0.00, 0.00, 0.00]` |
+| 2 | Long A1 | `[0.00, 1.00, 0.00, 0.00]` |
+| 3 | Long A2 | `[0.00, 0.00, 1.00, 0.00]` |
+| 4 | Equal Weight | `[0.33, 0.33, 0.33, 0.00]` |
+| 5 | Conservative | `[0.25, 0.25, 0.25, 0.25]` |
+| 6 | Short A0 | `[−0.50, 0.50, 0.50, 0.50]` |
+| 7 | Short A1 | `[0.50, −0.50, 0.50, 0.50]` |
+| 8 | Short A2 | `[0.50, 0.50, −0.50, 0.50]` |
+| 9 | Long A1+A2 | `[0.00, 0.50, 0.50, 0.00]` |
+
+### Función de recompensa — Sortino Diferencial (R3)
+
+```
+R = log_ret − 0.01 × turnover − 0.05 × max(0, −log_ret)
+```
+
+- `log_ret`: retorno logarítmico del portafolio en el paso actual
+- `turnover`: suma de cambios absolutos en pesos (penaliza rebalanceo excesivo)
+- `max(0, −log_ret)`: penaliza solo pérdidas (downside), no la volatilidad al alza
+
+Las versiones R1 (log-retorno puro) y R2 (con drawdown acumulado) fueron descartadas durante el diagnóstico — ver `docs/ENTRENAMIENTO_V1.md` y `docs/ENTRENAMIENTO_V2.md`.
+
+### Algoritmo — Double DQN
+
+- Red online para selección de acción; red target para evaluación del valor Q
+- Target sincronizada cada 1 000 pasos
+- Replay buffer: 50 000 transiciones
+- Entrenamiento: 600 000 pasos por fold
+- Checkpoints cada 10 000 pasos con reanudación automática
+
+---
+
+## Protocolo de evaluación — Walk-Forward
+
+| Fold | train_end | eval_end | train_rows | eval_rows |
+|------|-----------|----------|-----------|----------|
+| 1 | 2019-12-31 | 2020-12-31 | 17 438 | 8 795 |
+| 2 | 2020-12-31 | 2021-12-31 | 26 210 | 8 776 |
+| 3 | 2021-12-31 | 2022-12-31 | 34 963 | 8 783 |
+| 4 | 2022-12-31 | 2023-12-31 | 43 723 | 8 784 |
+| 5 | 2023-12-31 | 2025-12-31 | 52 484 | 17 544 |
+
+Splits definidos en `configs/default.yaml` e inmutables.
+
+---
+
+## Resultados — Versión 3 (entrega final)
+
+| Fold | sortino | cum_ret | max_dd |
+|------|---------|---------|--------|
+| 1 | **+1.8580** | **+127.86%** | **−23.33%** |
+| 2 | −1.5286 | −99.78% | −99.85% |
+| 3 | −3.5462 | −100.00% | −100.00% |
+| 4 | −4.9175 | −99.98% | −99.98% |
+| 5 | −3.8967 | −100.00% | −100.00% |
+
+**Análisis de resultados:** Fold 1 (mercado alcista 2020) fue exitoso. Folds 2-5 fallaron por **desajuste de régimen** entre el período de entrenamiento y el período de evaluación: el agente aprendió a operar en un mercado que no es el que encontró en producción. Un factor agravante es que los folds 2-5 tienen conjuntos de entrenamiento 1.5–3× más grandes, por lo que con el mismo presupuesto de pasos completan muchos menos episodios completos, limitando la convergencia de los Q-valores.
+
+---
+
+## Reproducibilidad
 
 ```bash
-uv run jupyter notebook notebooks/eda.ipynb
-```
+# Instalar dependencias
+uv sync
 
-It walks through price history, return distributions, volatility regimes, correlations, and the pre-computed feature set. Your state space and reward function decisions should be grounded in what you observe there.
-
-**Lookahead.** Rows are indexed by candle close time, so all values in row `T` are observable at `T`. Lookahead cannot occur on raw data, but can appear in feature engineering. Common violations: fitting a scaler before the train/eval split, or rolling operations that borrow from future rows. `build_features()` is lookahead-safe; audit any custom features.
-
-## 3. Environment Design
-
-```python
-obs, _ = env.reset()
-while not done:
-    action = agent.act(obs)
-    obs, reward, terminated, truncated, info = env.step(action)
-    done = terminated or truncated
-```
-
-The base class in `src/env.py` handles portfolio valuation and transaction costs. Subclass it in `agent.py` and implement three methods:
-
-```python
-def _obs(self) -> np.ndarray           # observation vector at each step
-def _weights_from_action(self, action)  # action index to portfolio weights (sum to 1, all >= 0)
-def _reward(self, prev, curr)           # scalar reward signal
-```
-
-## 4. Reward Design
-
-Document the full iteration. State each reward formulation, train, and report observed behavior. Did the agent park in cash? Trade excessively? For the final formulation, compare at least two alternatives: log return, differential Sharpe, drawdown-penalized, turnover-penalized. Identify one plausible exploit of your reward and report whether the agent discovered it.
-
-## 5. Algorithm
-
-DQN with a discrete action space is the standard starting point. Reasonable extensions: Double DQN, Dueling DQN, Prioritized Experience Replay. Policy gradient methods (PPO, SAC) are permitted if justified by the problem formulation. Report all hyperparameters. Any tuning on the held-out evaluation window is grounds for disqualification.
-
-## 6. Baselines
-
-All baselines are implemented in `src/baselines.py` and must be evaluated under identical conditions to your agent.
-
-| Baseline | Role |
-|---|---|
-| Random policy | Sanity floor |
-| Hold cash | Passive benchmark |
-| Hold Asset 0 | Single-asset benchmark |
-| Equal weight, rebalanced | Diversification benchmark |
-| SMA crossover | Trend-following heuristic |
-
-## 7. Training Protocol
-
-Report: total environment steps, wall-clock time, hardware, logged metrics, and stopping criterion.
-
-## 8. Evaluation
-
-Split your data into train and test using `split()` from `src/data.py`. Train your agent on the training period, evaluate on the held-out test period without any further tuning. The final held-out window is evaluated once, with no parameter changes afterward.
-
-Report against all baselines: cumulative return, Sortino ratio (primary metric — penalizes only downside volatility), max drawdown, and total fees paid. Run at 0 bps and 10 bps to show your agent is robust to transaction costs.
-
-## 9. Results
-
-Equity curves against all baselines with seed spread visible. Per-window metrics table. Allocation plot over time with economic interpretation. At minimum one figure documenting failure or anomalous behavior.
-
-## 10. Discussion
-
-One paragraph per item on how it manifested in your project and how you addressed it:
-
-- Reward design and reward hacking
-- Sample efficiency: market regimes are long and observations are not independent
-- Train-to-deploy distribution shift
-- Non-stationarity and regime change
-- Long-horizon credit assignment
-
-## 11. Reflection
-
-- Three results that surprised you
-- Two methodological changes you would make given more time
-- One aspect of your agent's behavior you cannot explain
-- The most significant gap between DRL theory and this applied problem
-
-## 12. Submission
-
-Submit a single file: `agent.py`. It must define `TradingEnv` (your environment) and `Agent` (your model). Class names must not be changed.
-
-```bash
+# Verificar que la entrega pasa todos los tests
 uv run pytest tests/test_submission.py -v
 ```
 
-All tests must pass. A submission with failing tests will not be graded.
+Los 26 tests deben pasar. Datos de entrenamiento incluidos en `data/raw/`.
 
-## Rubric
+---
 
-| Component | Weight |
-|---|---|
-| Problem formulation: state and action design (Section 1) | 20% |
-| Environment implementation (Section 3) | 15% |
-| Reward design with documented iteration (Section 4) | 15% |
-| Evaluation protocol: walk-forward, ablation, metrics (Section 8) | 20% |
-| Baseline comparison (Section 6) | 10% |
-| Discussion and reflection (Sections 10–11) | 15% |
-| Submission passes all tests | 5% |
+## Datos
 
-The held-out evaluation result is not on this rubric. Rigorous methodology on a failing agent outscores a lucky result with no methodology.
+Precios OHLCV + `taker_buy_ratio` para tres activos de criptomonedas (identidades anonimizadas). Intervalo utilizado: **1 hora**. Disponibles también: 15m, 30m.
